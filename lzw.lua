@@ -11,6 +11,15 @@ function __get_byte_hibits(v,hi_bits_count)
 	return r;
 end
 
+--获取v （0-255）的 [h_index,l_index]  ∈ [0~7] 
+function __get_byte_bits(v,h_index,l_index)
+	local mul_factor = 2^(h_index);
+	local div_factor = 2^(7-l_index);
+	local h = math.floor( (v*mul_factor % 255)/mul_factor);
+	h = math.floor( h / div_factor);
+	return h
+end
+
 --dump int v's bit serial
 function __dump_binary(v,width)
 	width = width or 8;--数据的宽度，默认为1字节也就是8bit
@@ -103,8 +112,10 @@ function luastream:__get_bits_to_int(i,j)
 	return int
 end
 
---把int整数值添加到stream后面，i
-function luastream:__push_bits_from_int(int,i,j)
+--把int整数值添加到stream后面，int是数值，int_bits是数值的bit数，因为可能有前导0，单独用int无法表示出来
+--比如 0010 1010 这种，int = 10 1010 ,int_bits = 8,
+function luastream:__push_bits_from_int(int,int_bits)
+	local left_bits = (8 - self.bit_count % 8)%8;--stream需要凑成1byte的bit数
 	
 end
 --从 start(从0开始) 取出 bit_count 个bit，返回这段数据的构成的int值
