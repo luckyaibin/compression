@@ -1,17 +1,23 @@
 --获取v(0~255)的低 low_bits_count 个bit的值(整数)
+max_safe_int = 9007199254740991;--1F FFFF FFFF FFFF(1 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111)大于这个数的整数在lua里很可能不能正确进行比较，比如 max_safe_int+1 == max_safe_int+2 为true
+max_int = 	   9223372036854775807;--0x7FFF FFFF FFFF FFFF
+--在lua中，所有的数字都是转化成double来处理，所以对于 max_int 这个值，在lua里根本就不存在！也就是max_int里存的是 9223372036854775807 的浮点数近似值
+--print(9223372036854775807 == 9223372036854775807-1) 也会返回true
 function __get_byte_lowbits(v,low_bits_count)
+	assert(v>=0 and v<=255 and low_bits_count >=0 and low_bits_count<=8);
 	local mul_factor = 2^(8-low_bits_count);
 	local r = math.floor(( v*mul_factor % 255 ) / mul_factor);
 	return r;
 end
 --获取v(0~255)的高 hi_bits_count 个bit的值(整数)
 function __get_byte_hibits(v,hi_bits_count)
+	assert(v>=0 and v<=255 and hi_bits_count >=0 and hi_bits_count<=8);
 	local mul_factor = 2^(8-hi_bits_count);
 	local r = math.floor( v / mul_factor);
 	return r;
 end
 
---获取v （0-255）的 [h_index,l_index]  ∈ [0~7] 
+--获取v （0-255）的 [h_index,l_index]  ∈ [0~7]
 function __get_byte_bits(v,h_index,l_index)
 	local mul_factor = 2^(h_index);
 	local div_factor = 2^(7-l_index);
@@ -20,8 +26,38 @@ function __get_byte_bits(v,h_index,l_index)
 	return h
 end
 
+--把 数值 v 放到string里，而不是直接转字符串
+--比如16进制 68656c6c6f 放到字符串里构成'hello'，而不是'68656c6c6f'
+function __number_to_string(v)
+	assert(v <= max_safe_int);
+
+end
+
+--从 bit数量为 bit_count 的字符串 data 里，截取 bit i~ j 构成的int
+function __get_bits_to_int_helper(data,bit_count,i,j)
+	if i<0 or j < 0 or i>j or j >= bit_count or (j-i)>52 then --52是 max_safe_int的bit 长度
+		assert(nil,"invalid i or j");
+	end
+	local s = math.floor(i / 8) ;
+	local s_low_bits = 8 - i % 8;
+	local e = math.floor(j / 8);
+	local e_hi_bits = j % 8 + 1;
+	local int = __get_byte_lowbits(string.byte(data,s+1),s_low_bits);
+	for i=s+2,e do
+		int = int * 256 + string.byte(data,i);
+	end
+	if s==e then
+		int = __get_byte_hibits(int,e_hi_bits);
+	else
+		int = int * (2^e_hi_bits) + __get_byte_hibits(string.byte(data,e+1),e_hi_bits);
+	end
+	return int
+end
+
 --dump int v's bit serial
 function __dump_binary(v,width)
+	assert(type(v)=="number",v ..'not number');
+	--print('dump binary:',v);
 	width = width or 8;--数据的宽度，默认为1字节也就是8bit
 	local bits = '';
 	local bit_count = 0;
@@ -48,6 +84,7 @@ function luastream:new(data,bit_count)
 	local self = {};
 	setmetatable(self,luastream);
 	self.data = data or '';
+	print('initial data:',data);
 	self.bit_count = bit_count or 8 * string.len(self.data);
 	return self;
 end
@@ -96,27 +133,19 @@ function luastream:__get_bits_to_int(i,j)
 	if i<0 or j < 0 or i>j or j >= self.bit_count then
 		assert(nil,"invalid i or j");
 	end
-	local s = math.floor(i / 8) ;
-	local s_low_bits = 8 - i % 8;
-	local e = math.floor(j / 8);
-	local e_hi_bits = j % 8 + 1;
-	local int = __get_byte_lowbits(string.byte(self.data,s+1),s_low_bits);
-	for i=s+2,e do
-		int = int * 256 + string.byte(self.data,i);
-	end
-	if s==e then
-		int = __get_byte_hibits(int,e_hi_bits);
-	else
-		int = int * (2^e_hi_bits) + __get_byte_hibits(string.byte(self.data,e+1),e_hi_bits);
-	end
-	return int
+	return __get_bits_to_int_helper(self.data,self.bit_count,i,j);
 end
 
---把int整数值添加到stream后面，int是数值，int_bits是数值的bit数，因为可能有前导0，单独用int无法表示出来
---比如 0010 1010 这种，int = 10 1010 ,int_bits = 8,
-function luastream:__push_bits_from_int(int,int_bits)
+--把int整数值添加到stream后面，int是数值，int_bits_count 是数值的bit数，因为可能有前导0，单独用int无法表示出来
+--比如 0010 1010 这种，int = 10 1010 ,int_bits_count = 8,
+function luastream:__push_bits_from_int(int,int_bits_count)
+	assert(type(v) == 'number',v .. 'not number');
+	if int > max_safe_int then
+		assert(nil,int .. 'int value too big');
+	end
+
 	local left_bits = (8 - self.bit_count % 8)%8;--stream需要凑成1byte的bit数
-	
+
 end
 --从 start(从0开始) 取出 bit_count 个bit，返回这段数据的构成的int值
 function luastream:fetch(start,bit_count)
@@ -130,12 +159,23 @@ local stream1 = luastream:new('hello');
 print('hex:',stream1:dump_hex());
 print('binary:',stream1:dump_binary());
 
-
+local max_safe_int_str = '';
+max_safe_int_str = max_safe_int_str .. string.char(0x1F);
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);--string.char不能转换0xff？？？？
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+local stream2 = luastream:new(max_safe_int_str,56);
+print('....',__dump_binary(max_safe_int))
+print('hex:',stream2:dump_hex());
+print('binary:',stream2:dump_binary());
+print('adfadf',string.char(0xFF),string.char(69));
 --AB02B43AA
 function lzw(data)
 	print('original:',data);
 	print(string.byte(data,1));
 end
-
 local data = "ABABABABBBABABAA";
 --lzw(data);
