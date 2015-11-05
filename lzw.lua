@@ -1,6 +1,7 @@
 --获取v(0~255)的低 low_bits_count 个bit的值(整数)
 max_safe_int = 9007199254740991;--1F FFFF FFFF FFFF(1 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111)大于这个数的整数在lua里很可能不能正确进行比较，比如 max_safe_int+1 == max_safe_int+2 为true
 max_int = 	   9223372036854775807;--0x7FFF FFFF FFFF FFFF
+--lua代码里初始化一个值，比如 int = 0x68656c6c6f，超过了32bit，int初始值则直接变成0xFFFFFFFF，而用448378203247 就可以
 --在lua中，所有的数字都是转化成double来处理，所以对于 max_int 这个值，在lua里根本就不存在！也就是max_int里存的是 9223372036854775807 的浮点数近似值
 --print(9223372036854775807 == 9223372036854775807-1) 也会返回true
 function __get_byte_lowbits(v,low_bits_count)
@@ -34,10 +35,14 @@ function __number_to_string(v)
 end
 
 --从 bit数量为 bit_count 的字符串 data 里，截取 bit i~ j 构成的int
-function __get_bits_to_int_helper(data,bit_count,i,j)
-	if i<0 or j < 0 or i>j or j >= bit_count or (j-i)>52 then --52是 max_safe_int的bit 长度
-		assert(nil,"invalid i or j");
-	end
+--i，j都是从0开始  [ 0 1 2 3 4 5 6 7 , 8 9 10 ... ]
+function __get_string_bits_to_int_helper(data,bit_count,i,j)
+	--52是 max_safe_int的bit 长度
+	assert(type(data) == "string" 
+	and i>=0 andj >= 0 
+	and i<j 
+	and j < bit_count 
+	and (j-i)<=52,"invalid input,check parameter");
 	local s = math.floor(i / 8) ;
 	local s_low_bits = 8 - i % 8;
 	local e = math.floor(j / 8);
@@ -56,6 +61,36 @@ function __get_bits_to_int_helper(data,bit_count,i,j)
 	end
 	--print('int:',int,'bit_count:',bit_count,'i:',i,'j:',j)
 	return int
+end
+
+--从number里，截取 bit i~ j 构成的int 
+--0010 1010 1111 1100
+--0123 4567 ...
+--i是高位bit，j是低位bit.i、j∈0,1,2,3...
+function __get_number_bits_to_int_helper(int,bit_count,i,j)
+	assert(type(int) == "number" 
+	and int <= max_safe_int 
+	and i>=0 and j >= 0 
+	and i<=j 
+	and j < bit_count 
+	and (j-i)<=52,"invalid input,check parameter");
+	--[[
+	--最高位的1
+	local msb = 0;
+	local num = int;
+	while(num>0) do
+		num = math.floor(num/2);
+		msb=msb+1;
+	end
+	if bit_count < msb then
+		bit_count = msb;
+	end
+	--]]
+	--strip higher bits than i
+	local part_int = int % (2^(bit_count - i));
+	--strip lower bits than j
+	part_int = part_int / (2^(bit_count - j - 1));
+	return part_int
 end
 
 --dump int v's bit serial
@@ -104,11 +139,11 @@ function luastream:dump_hex()
 	local left_bits = self.bit_count % 8;
 	for i=bytes,1,-1 do
 		local start = left_bits + (i-1)*8
-		local int = self:__get_bits_to_int(start,start+7);
+		local int = __get_string_bits_to_int_helper(self.data,self.bit_count,start,start+7);
 		hex_stream =  string.format("%0X",int) .. ' ' .. hex_stream ;
 	end
 	if left_bits>0 then
-		local int = self:__get_bits_to_int(0,left_bits-1)
+		local int = __get_string_bits_to_int_helper(self.data,self.bit_count,0,left_bits-1);
 		--print('.........',string.format("%0x",int))
 		hex_stream = string.format("%0X",int).. ' ' ..hex_stream  ;
 	end
@@ -121,23 +156,14 @@ function luastream:dump_binary()
 	local left_bits = self.bit_count % 8;
 	for i=bytes,1,-1 do
 		local start = left_bits + (i-1)*8
-		local int = self:__get_bits_to_int(start,start+7);
+		local int = __get_string_bits_to_int_helper(self.data,self.bit_count,start,start+7);
 		binary_stream = __dump_binary(int) .. ' ' ..  binary_stream;
 	end
 	if left_bits>0 then
-		local int = self:__get_bits_to_int(0,left_bits-1)
+		local int = __get_string_bits_to_int_helper(self.data,self.bit_count,0,left_bits-1);
 		binary_stream =__dump_binary(int,left_bits) .. ' ' .. binary_stream;
 	end
 	return binary_stream;
-end
-
---start from 0 [ 0 1 2 3 4 5 6 7 , 8 9 10 ... ]
---获取stream里从[i,j]的bits构成的整数值，i，j都是从0开始
-function luastream:__get_bits_to_int(i,j)
-	if i<0 or j < 0 or i>j or j >= self.bit_count then
-		assert(nil,"invalid i or j");
-	end
-	return __get_bits_to_int_helper(self.data,self.bit_count,i,j);
 end
 
 --把int整数值添加到stream后面，int是数值，int_bits_count 是数值的bit数，因为可能有前导0，单独用int无法表示出来
@@ -147,35 +173,33 @@ function luastream:__push_bits_from_int(int,int_bits_count)
 	if int > max_safe_int then
 		assert(nil,int .. 'int value too big');
 	end
-
+	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12]
 	local left_bits = (8 - self.bit_count % 8)%8;--stream需要凑成1byte的bit数
+	local s = math.floor(self.bit_count / 8)) * 8;
+	--先拼凑满data成为1byte
+	if left_bits > 0 then
+		local sub = __get_number_bits_to_int_helper(int,int_bits_count,0,left_bits-1);
+		__get_string_bits_to_int_helper
+	else
+		
+	end
+end
+	
+	
 
 end
 --从 start(从0开始) 取出 bit_count 个bit，返回这段数据的构成的int值
 function luastream:fetch(start,bit_count)
-	return self:__get_bits_to_int(start,start+bit_count-1);
+	return __get_string_bits_to_int_helper(self.data,self.bit_count,start,start+bit_count-1);
 end
 
 
 
 --68656c6c6f
 local stream1 = luastream:new('hello');
---print('hex:',stream1:dump_hex());
---print('binary:',stream1:dump_binary());
+print('hex:',stream1:dump_hex());
+print('binary:',stream1:dump_binary());
 
-local max_safe_int_str = '';
-max_safe_int_str = max_safe_int_str .. string.char(0x1F);
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);--string.char不能转换0xff？？？？
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);
-max_safe_int_str = max_safe_int_str .. string.char(0xFF);
-print('max_safe_int_str:',max_safe_int_str,string.len(max_safe_int_str));
-local stream2 = luastream:new(max_safe_int_str,56);
-print('....',__dump_binary(max_safe_int))
-print('hex:',stream2:dump_hex());
-print('binary:',stream2:dump_binary());
 
 --AB02B43AA
 function lzw(data)
