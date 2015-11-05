@@ -6,7 +6,7 @@ max_int = 	   9223372036854775807;--0x7FFF FFFF FFFF FFFF
 function __get_byte_lowbits(v,low_bits_count)
 	assert(v>=0 and v<=255 and low_bits_count >=0 and low_bits_count<=8);
 	local mul_factor = 2^(8-low_bits_count);
-	local r = math.floor(( v*mul_factor % 255 ) / mul_factor);
+	local r = math.floor(( v*mul_factor % 256 ) / mul_factor);
 	return r;
 end
 --获取v(0~255)的高 hi_bits_count 个bit的值(整数)
@@ -21,7 +21,7 @@ end
 function __get_byte_bits(v,h_index,l_index)
 	local mul_factor = 2^(h_index);
 	local div_factor = 2^(7-l_index);
-	local h = math.floor( (v*mul_factor % 255)/mul_factor);
+	local h = math.floor( (v*mul_factor % 256)/mul_factor);
 	h = math.floor( h / div_factor);
 	return h
 end
@@ -42,15 +42,19 @@ function __get_bits_to_int_helper(data,bit_count,i,j)
 	local s_low_bits = 8 - i % 8;
 	local e = math.floor(j / 8);
 	local e_hi_bits = j % 8 + 1;
+
+	--print(s,s_low_bits,e,e_hi_bits,string.byte(data,s+1))
 	local int = __get_byte_lowbits(string.byte(data,s+1),s_low_bits);
 	for i=s+2,e do
 		int = int * 256 + string.byte(data,i);
 	end
 	if s==e then
+		--print('-------',e_hi_bits,int)
 		int = __get_byte_hibits(int,e_hi_bits);
 	else
 		int = int * (2^e_hi_bits) + __get_byte_hibits(string.byte(data,e+1),e_hi_bits);
 	end
+	--print('int:',int,'bit_count:',bit_count,'i:',i,'j:',j)
 	return int
 end
 
@@ -105,7 +109,7 @@ function luastream:dump_hex()
 	end
 	if left_bits>0 then
 		local int = self:__get_bits_to_int(0,left_bits-1)
-		print('.........',string.format("%0x",int))
+		--print('.........',string.format("%0x",int))
 		hex_stream = string.format("%0X",int).. ' ' ..hex_stream  ;
 	end
 	return hex_stream;
@@ -156,8 +160,8 @@ end
 
 --68656c6c6f
 local stream1 = luastream:new('hello');
-print('hex:',stream1:dump_hex());
-print('binary:',stream1:dump_binary());
+--print('hex:',stream1:dump_hex());
+--print('binary:',stream1:dump_binary());
 
 local max_safe_int_str = '';
 max_safe_int_str = max_safe_int_str .. string.char(0x1F);
@@ -167,15 +171,18 @@ max_safe_int_str = max_safe_int_str .. string.char(0xFF);
 max_safe_int_str = max_safe_int_str .. string.char(0xFF);
 max_safe_int_str = max_safe_int_str .. string.char(0xFF);
 max_safe_int_str = max_safe_int_str .. string.char(0xFF);
+print('max_safe_int_str:',max_safe_int_str,string.len(max_safe_int_str));
 local stream2 = luastream:new(max_safe_int_str,56);
 print('....',__dump_binary(max_safe_int))
 print('hex:',stream2:dump_hex());
 print('binary:',stream2:dump_binary());
-print('adfadf',string.char(0xFF),string.char(69));
+
 --AB02B43AA
 function lzw(data)
 	print('original:',data);
 	print(string.byte(data,1));
 end
 local data = "ABABABABBBABABAA";
+
+print(9007199254740991/256)
 --lzw(data);
