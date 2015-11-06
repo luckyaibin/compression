@@ -173,15 +173,32 @@ function luastream:__push_bits_from_int(int,int_bits_count)
 	if int > max_safe_int then
 		assert(nil,int .. 'int value too big');
 	end
-	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12]
-	local left_bits = (8 - self.bit_count % 8)%8;--stream需要凑成1byte的bit数
-	local s = math.floor(self.bit_count / 8)) * 8;
-	--先拼凑满data成为1byte
-	if left_bits > 0 then
-		local sub = __get_number_bits_to_int_helper(int,int_bits_count,0,left_bits-1);
-		__get_string_bits_to_int_helper
-	else
+	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12 13 14 15]
+	local s_int = 0;--int的起始下标
+	--appedn to self.data
+	while( true ) do 
+		local left_bits = self.bit_count % 8;--(8 - self.bit_count % 8)%8;
+		local s = math.floor(self.bit_count / 8)) * 8;
+	
+		local e_int = math.min( s_int + (8-left_bits-1),s_int + int_bits_count-1) ;
+		local full_byte;
+		if left_bits > 0 then
+			--取出data末尾的bits
+			local str_sub  = __get_string_bits_to_int_helper(self.data,self.bit_count,s,s+left_bits-1);
+			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
+			full_byte = str_sub * (2^(8-left_bits)) + int_sub*(2^(8-left_bits-(e_int-s_int+1)));			
+		else
+			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
+			full_byte = int_sub*(2^(8-(e_int-s_int+1)));
+		end
+		--添加
+		self.data = self.data .. string.char(full_byte);
+		self.bit_count = self.bit_count + (e_int - s_int + 1);
+		s_int = e_int + 1;
 		
+		if s_int == int_bits_count then --结束
+			break;
+		end
 	end
 end
 	
@@ -199,6 +216,7 @@ end
 local stream1 = luastream:new('hello');
 print('hex:',stream1:dump_hex());
 print('binary:',stream1:dump_binary());
+
 
 
 --AB02B43AA
