@@ -64,7 +64,6 @@ end
 --0123 4567 ...
 --i是高位bit，j是低位bit.i、j∈0,1,2,3...
 function __get_number_bits_to_int_helper(int,bit_count,i,j)
-	--print("NNNNNNNNNNNNNNNNN:",int,bit_count,i,j)
 	assert(type(int) == "number"
 	and int <= max_safe_int
 	and i>=0 and j >= 0
@@ -88,6 +87,74 @@ function __get_number_bits_to_int_helper(int,bit_count,i,j)
 	--strip lower bits than j
 	part_int = math.floor(part_int / (2^(bit_count - j - 1)));
 	return part_int
+end
+
+--把int整数值添加到 data 后面，data_bit_count是data的bit数，int 是数值， int_bits_count 是数值的bit数，
+--因为可能有前导0，单独用int无法表示出来
+--比如 0010 1010 这种，int = 10 1010 ,而int_bits_count = 8,
+function __append_bits_from_int(data,data_bit_count,int,int_bits_count)
+	assert(type(int) == 'number',int .. 'not number');
+	if int > max_safe_int then
+		assert(nil,int .. 'int value too big');
+	end
+	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12 13 14 15]
+	local s_int = 0;--int的起始下标
+	--appedn to data
+	while( true ) do
+		local left_bits = data_bit_count % 8;
+		local s = math.floor(data_bit_count / 8) * 8;
+
+		local e_int = math.min( s_int + (8-left_bits-1),int_bits_count-1) ;
+		local full_byte;
+		if left_bits > 0 then
+			--取出data末尾的bits
+			local str_sub  = __get_string_bits_to_int_helper(data,data_bit_count,s,s+left_bits-1);
+			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
+			full_byte = str_sub * (2^(8-left_bits)) + int_sub*(2^(8-left_bits-(e_int-s_int+1)));
+		else
+			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
+			full_byte = int_sub*(2^(8-(e_int-s_int+1)));
+		end
+		--添加
+		data = data .. string.char(full_byte);
+		data_bit_count = data_bit_count + (e_int - s_int + 1);
+		s_int = e_int + 1;
+		if s_int == int_bits_count then --结束
+			break;
+		end
+	end
+	return data,data_bit_count;
+end
+
+function __append_bits_from_string(data,data_bit_count,str,str_bits_count)
+	assert(type(str) == 'string',str .. 'not string');
+	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12 13 14 15]
+	local s_int = 0;--int的起始下标
+	--appedn to data
+	while( true ) do
+		local left_bits = data_bit_count % 8;
+		local s = math.floor(data_bit_count / 8) * 8;
+
+		local e_int = math.min( s_int + (8-left_bits-1),str_bits_count-1) ;
+		local full_byte;
+		if left_bits > 0 then
+			--取出data末尾的bits
+			local str_sub  = __get_string_bits_to_int_helper(data,data_bit_count,s,s+left_bits-1);
+			local str_sub2 = __get_string_bits_to_int_helper(str,str_bits_count,s_int,e_int);
+			full_byte = str_sub * (2^(8-left_bits)) + str_sub2*(2^(8-left_bits-(e_int-s_int+1)));
+		else
+			local str_sub2 = __get_string_bits_to_int_helper(str,str_bits_count,s_int,e_int);
+			full_byte = str_sub2*(2^(8-(e_int-s_int+1)));
+		end
+		--添加
+		data = data .. string.char(full_byte);
+		data_bit_count = data_bit_count + (e_int - s_int + 1);
+		s_int = e_int + 1;
+		if s_int == str_bits_count then --结束
+			break;
+		end
+	end
+	return data,data_bit_count;
 end
 
 --dump int v's bit serial
@@ -161,58 +228,33 @@ function luastream:dump_binary()
 	return binary_stream;
 end
 
---把int整数值添加到stream后面，int是数值，int_bits_count 是数值的bit数，因为可能有前导0，单独用int无法表示出来
---比如 0010 1010 这种，int = 10 1010 ,int_bits_count = 8,
-function luastream:__push_bits_from_int(int,int_bits_count)
-	assert(type(int) == 'number',int .. 'not number');
-	if int > max_safe_int then
-		assert(nil,int .. 'int value too big');
-	end
-	--[ 0 1 2 3 4 5 6 7  8 9 10 11 12 13 14 15]
-	local s_int = 0;--int的起始下标
-	--appedn to self.data
-	while( true ) do
-		local left_bits = self.bit_count % 8;--(8 - self.bit_count % 8)%8;
-		local s = math.floor(self.bit_count / 8) * 8;
-
-		local e_int = math.min( s_int + (8-left_bits-1),int_bits_count-1) ;
-		local full_byte;
-		if left_bits > 0 then
-			--取出data末尾的bits
-			local str_sub  = __get_string_bits_to_int_helper(self.data,self.bit_count,s,s+left_bits-1);
-			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
-			full_byte = str_sub * (2^(8-left_bits)) + int_sub*(2^(8-left_bits-(e_int-s_int+1)));
-		else
-			local int_sub = __get_number_bits_to_int_helper(int,int_bits_count,s_int,e_int);
-			full_byte = int_sub*(2^(8-(e_int-s_int+1)));
-		end
-		--添加
-		self.data = self.data .. string.char(full_byte);
-		self.bit_count = self.bit_count + (e_int - s_int + 1);
-		s_int = e_int + 1;
-		if s_int == int_bits_count then --结束
-			break;
-		end
-	end
-end
 --从 start(从0开始) 取出 bit_count 个bit，返回这段数据的构成的int值
 function luastream:fetch(start,bit_count)
 	return __get_string_bits_to_int_helper(self.data,self.bit_count,start,start+bit_count-1);
 end
 
+function luastream:put(data,data_bit_len)
+	if type(data) == 'number' then
+		self.data,self.bit_count = __append_bits_from_int(self.data,self.bit_count,data,data_bit_len);
+	elseif type(data) == 'string' then
+		self.data,self.bit_count = __append_bits_from_string(self.data,self.bit_count,data,data_bit_len);
+	end
+end
 
 
 --68656c6c6f
 local stream1 = luastream:new('hello');
-print('11111 hex:',stream1:dump_hex());
-print('11111 binary:',stream1:dump_binary());
+print('hex:',stream1:dump_hex());
+print('binary:',stream1:dump_binary());
+ 
+--stream1:put(string.char(0x6f),6)
+stream1:put(0x6f,6)
+print('hex:',stream1:dump_hex());
+print('binary:',stream1:dump_binary());
 
-stream1:__push_bits_from_int(0x6f,41);
 
-
-print('22222 hex:',stream1:dump_hex());
-print('22222 binary:',stream1:dump_binary());
-
+print('1 binary::::', __dump_binary(0x6f));
+print('2 binary::::', __dump_binary(__get_number_bits_to_int_helper(0x6f,6,0,5)));
 --AB02B43AA
 function lzw(data)
 	print('original:',data);
