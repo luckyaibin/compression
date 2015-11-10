@@ -40,26 +40,22 @@ function __get_string_bits_to_int_helper(data,bit_count,i,j)
 	--52是 max_safe_int的bit 长度
 	assert(type(data) == "string"
 	and i>=0 and j >= 0
-	and i<j
+	and i<=j
 	and j < bit_count
 	and (j-i)<=52,"invalid input,check parameter");
 	local s = math.floor(i / 8) ;
 	local s_low_bits = 8 - i % 8;
 	local e = math.floor(j / 8);
 	local e_hi_bits = j % 8 + 1;
-
-	--print(s,s_low_bits,e,e_hi_bits,string.byte(data,s+1))
 	local int = __get_byte_lowbits(string.byte(data,s+1),s_low_bits);
 	for i=s+2,e do
 		int = int * 256 + string.byte(data,i);
 	end
 	if s==e then
-		--print('-------',e_hi_bits,int)
 		int = __get_byte_hibits(int,e_hi_bits);
 	else
 		int = int * (2^e_hi_bits) + __get_byte_hibits(string.byte(data,e+1),e_hi_bits);
 	end
-	--print('int:',int,'bit_count:',bit_count,'i:',i,'j:',j)
 	return int
 end
 
@@ -68,6 +64,7 @@ end
 --0123 4567 ...
 --i是高位bit，j是低位bit.i、j∈0,1,2,3...
 function __get_number_bits_to_int_helper(int,bit_count,i,j)
+	--print("NNNNNNNNNNNNNNNNN:",int,bit_count,i,j)
 	assert(type(int) == "number"
 	and int <= max_safe_int
 	and i>=0 and j >= 0
@@ -96,7 +93,6 @@ end
 --dump int v's bit serial
 function __dump_binary(v,width)
 	assert(type(v)=="number",v ..'not number');
-	--print('dump binary:',v);
 	width = width or 8;--数据的宽度，默认为1字节也就是8bit
 	local bits = '';
 	local bit_count = 0;
@@ -144,7 +140,6 @@ function luastream:dump_hex()
 	end
 	if left_bits>0 then
 		local int = __get_string_bits_to_int_helper(self.data,self.bit_count,0,left_bits-1);
-		--print('.........',string.format("%0x",int))
 		hex_stream = string.format("%0X",int).. ' ' ..hex_stream  ;
 	end
 	return hex_stream;
@@ -180,7 +175,7 @@ function luastream:__push_bits_from_int(int,int_bits_count)
 		local left_bits = self.bit_count % 8;--(8 - self.bit_count % 8)%8;
 		local s = math.floor(self.bit_count / 8) * 8;
 
-		local e_int = math.min( s_int + (8-left_bits-1),s_int + int_bits_count-1) ;
+		local e_int = math.min( s_int + (8-left_bits-1),int_bits_count-1) ;
 		local full_byte;
 		if left_bits > 0 then
 			--取出data末尾的bits
@@ -195,7 +190,6 @@ function luastream:__push_bits_from_int(int,int_bits_count)
 		self.data = self.data .. string.char(full_byte);
 		self.bit_count = self.bit_count + (e_int - s_int + 1);
 		s_int = e_int + 1;
-
 		if s_int == int_bits_count then --结束
 			break;
 		end
@@ -213,24 +207,8 @@ local stream1 = luastream:new('hello');
 print('11111 hex:',stream1:dump_hex());
 print('11111 binary:',stream1:dump_binary());
 
-stream1:__push_bits_from_int(0x6f,7);
+stream1:__push_bits_from_int(0x6f,41);
 
-local v =__get_number_bits_to_int_helper(0x6f,8,0,7);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,6);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,5);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,4);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,3);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,2);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,1);
-print(__dump_binary(v));
-local v =__get_number_bits_to_int_helper(0x6f,7,0,0);
-print(__dump_binary(v));
 
 print('22222 hex:',stream1:dump_hex());
 print('22222 binary:',stream1:dump_binary());
@@ -242,5 +220,4 @@ function lzw(data)
 end
 local data = "ABABABABBBABABAA";
 
-print(9007199254740991/256)
 --lzw(data);
