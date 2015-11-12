@@ -230,6 +230,7 @@ end
 
 --从 start(从0开始) 取出 bit_count 个bit，返回这段数据的构成的int值
 function luastream:fetch(start,bit_count)
+	assert(start >= 0 and bit_count > 0 and bit_count <= 53 and start + bit_count-1 < self.bit_count);
 	return __get_string_bits_to_int_helper(self.data,self.bit_count,start,start+bit_count-1);
 end
 
@@ -244,22 +245,66 @@ end
 
 --68656c6c6f
 local stream1 = luastream:new('hello');
-print('hex:',stream1:dump_hex());
-print('binary:',stream1:dump_binary());
- 
---stream1:put(string.char(0x6f),6)
-stream1:put(0x6f,6)
-print('hex:',stream1:dump_hex());
-print('binary:',stream1:dump_binary());
+--print('hex:',stream1:dump_hex());
+--print('binary:',stream1:dump_binary());
+
+--stream1:put(string.char(0x6f),8)
+--stream1:put(0x6f,8)
+--print('hex:',stream1:dump_hex());
+--print('binary:',stream1:dump_binary());
 
 
-print('1 binary::::', __dump_binary(0x6f));
-print('2 binary::::', __dump_binary(__get_number_bits_to_int_helper(0x6f,6,0,5)));
+--print('1 binary::::', __dump_binary(0x6f));
+--print('2 binary::::', __dump_binary(__get_number_bits_to_int_helper(0x6f,6,0,5)));
 --AB02B43AA
 function lzw(data)
-	print('original:',data);
-	print(string.byte(data,1));
-end
-local data = "ABABABABBBABABAA";
+	local codes = {};
+	codes['A'] = 65;
+	codes['B'] = 66;
+	--codes['C'] = 3;
+	codes_num = 256;
+	local out = '';
+	local stream1 = luastream:new(data);
+	local bc = stream1:get_bit_count();--ACABCA 
+	--A curr_string A 
+	--C curr_string AC -> codes['AC'] = 4 curr_string = C
+	--A curr_string CA -> codes['CA'] = 5 curr_string = A 
+	--B curr_string AB -> codes['AB'] = 6 curr_string = B
+	--C curr_string BC -> codes['BC']
+	local curr_bc = 0;
+	local curr_string = '';
+	while(curr_bc < bc) do
+		local read_cnt = 8;
+		
+		local data = stream1:fetch(curr_bc,read_cnt)
+		data = string.char(data);
 
---lzw(data);
+		curr_string = curr_string .. data;
+		print('data		111 :::',data)
+		print('curr_string	111:::',curr_string,codes[curr_string])
+		
+		if( not codes[curr_string] ) then--不存在
+			
+			codes_num = codes_num + 1;
+			codes[curr_string] = codes_num;
+			
+			print('curr_string 22222:::',curr_string)
+			 
+		 
+			out = out .. ',' .. codes[string.sub(curr_string,1,string.len(curr_string)-1)];
+			curr_string = data;
+		end
+		
+		curr_bc = curr_bc + read_cnt;
+	end
+	out = out .. ':' .. codes[curr_string]
+	
+	print(out)
+	
+	for k,v in pairs(codes) do 
+		print(k,v)
+	end
+end
+local data = "ABBABBBABBA";
+
+lzw(data);
