@@ -243,6 +243,26 @@ function luastream:put(data,data_bit_len)
 end
 
 
+function fn_stringSplit(str,split_char)
+	local sub_str_tab = {};
+	if not (str and split_char) then
+		return sub_str_tab;
+	end
+   
+    while (true) do
+        local pos = string.find(str, split_char);
+        if not pos then
+			if string.len(str) > 0 then
+				sub_str_tab[#sub_str_tab + 1] = str;
+			end
+            break;
+        end
+        local sub_str = string.sub(str, 1, pos - 1);
+        sub_str_tab[#sub_str_tab + 1] = sub_str;
+        str = string.sub(str, pos + 1, #str);
+    end
+    return sub_str_tab;
+end
 --68656c6c6f
 local stream1 = luastream:new('hello');
 --print('hex:',stream1:dump_hex());
@@ -257,20 +277,18 @@ local stream1 = luastream:new('hello');
 --print('1 binary::::', __dump_binary(0x6f));
 --print('2 binary::::', __dump_binary(__get_number_bits_to_int_helper(0x6f,6,0,5)));
 --AB02B43AA
-function lzw(data)
+function lzw_compress(data)
 	local codes = {};
 	codes['A'] = 65;
 	codes['B'] = 66;
+	for i=0,255 do 
+		codes[string.char(i)] = i;
+	end
 	--codes['C'] = 3;
 	codes_num = 256;
 	local out = '';
 	local stream1 = luastream:new(data);
 	local bc = stream1:get_bit_count();--ACABCA 
-	--A curr_string A 
-	--C curr_string AC -> codes['AC'] = 4 curr_string = C
-	--A curr_string CA -> codes['CA'] = 5 curr_string = A 
-	--B curr_string AB -> codes['AB'] = 6 curr_string = B
-	--C curr_string BC -> codes['BC']
 	local curr_bc = 0;
 	local curr_string = '';
 	while(curr_bc < bc) do
@@ -278,33 +296,73 @@ function lzw(data)
 		
 		local data = stream1:fetch(curr_bc,read_cnt)
 		data = string.char(data);
-
-		curr_string = curr_string .. data;
-		print('data		111 :::',data)
-		print('curr_string	111:::',curr_string,codes[curr_string])
-		
-		if( not codes[curr_string] ) then--不存在
-			
+		if( not codes[curr_string .. data] ) then--不存在
 			codes_num = codes_num + 1;
-			codes[curr_string] = codes_num;
-			
-			print('curr_string 22222:::',curr_string)
-			 
-		 
-			out = out .. ',' .. codes[string.sub(curr_string,1,string.len(curr_string)-1)];
+			codes[curr_string .. data] = codes_num;
+			out = out .. ',' .. codes[ curr_string ];
 			curr_string = data;
+		else
+			curr_string = curr_string .. data;
 		end
-		
 		curr_bc = curr_bc + read_cnt;
 	end
-	out = out .. ':' .. codes[curr_string]
-	
-	print(out)
-	
-	for k,v in pairs(codes) do 
-		print(k,v)
-	end
+	out = out .. ',' .. codes[curr_string]
+	return out,codes
 end
-local data = "ABBABBBABBA";
 
-lzw(data);
+--local data = "ABBABBBABBA";
+local data = "u1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAcccccu1928ABBABBBABBA734oikABBABBBABBAsdfhhkjABBABBBABBAfhsgkABBABBBABBAdjhfgkjh*(*982q7347598734095827349857ABABABAccccc";
+data = data;
+local output,codes = lzw_compress(data);
+for k,code in pairs(codes) do 
+	--print('dictionary:',k,code)
+end
+
+function lzw_decompress(output)
+	print('compressed:',output)
+	local codes = {}
+	codes[65] = 'A';
+	codes[66] = 'B';
+	for i=0,255 do 
+		codes[i] = string.char(i);
+	end
+	local codes_num = 256;
+	local str_table = fn_stringSplit(output,',');
+	 
+	
+	local decoded = '';
+	local pre_string = '';
+	local loop_cnt = 1;
+	for k,v in pairs(str_table) do 
+		--print('v:::',v)
+		local v=tonumber(v)
+		if v then
+			if not codes[v] then
+				codes[v] = pre_string .. string.sub(pre_string,1,1);
+			end
+			if pre_string ~= '' then
+				print('loop_cnt:::',loop_cnt,'codes_num:',codes_num,codes[codes_num])
+				
+				codes_num = codes_num + 1;
+				codes[codes_num] = pre_string .. string.sub(codes[v],1,1);
+				--print()
+			end
+			loop_cnt = loop_cnt + 1;
+			pre_string = codes[v];
+			--print(v,codes[v])
+			decoded = decoded .. codes[v];
+		end
+	end
+	print('decoded:::',decoded)
+	return decoded;
+end
+
+local decompressdata = lzw_decompress(output)
+
+assert(decompressdata == data)
+
+
+
+
+
+
