@@ -70,10 +70,6 @@ function encode(plain_text)
 		--print('c::::',c);
 	end
 	encoded_string = encoded_string .. codes[pre_str]
-
-	for k,v in pairs(codes) do
-		print(k,v)
-	end
 	return encoded_string
 end
 
@@ -84,21 +80,28 @@ function decode(encoded_string)
 	codes[66] = 'B';
 	local codes_number = 257;
 	local plain_text = '';
-	local pre_str = '';
+	local pre_str = '';--注意，它保存上一次被解码的字符串
 	local i = get_next_int(encoded_string)
 	while(true) do
-		print('plain_text:::',plain_text);
-		if not codes[i] then
-			codes[codes_number] = pre_str .. string.sub(pre_str,1,1);--添加新条目
+		--print('plain_text:::',plain_text);
+		if not codes[i] then --不存在(codes_number 必定是等于i的)
+			--添加新条目.这里是lzw的难点！在这里，我们需要做三件事：1是找到codes[i]对应的字符串Z，2是更新字典，3输出codes[i]对应的字符串
+			--解码比编码慢一步。因为codes[i]不存在的话,那么codes[i]则刚好是上一步刚添加到字典里的,而上一步被解码(压缩)的字符串是pre_str.也就是当我们遇到Z的第一个字符z0的时候，
+			--pre_str + z0 (就是codes[i])被添加到字典,而此后的 z0 + z1,z0 + z1 + z2 ...等都存在于字典里，直到Z后面的某个字符n，使得 Z + n不在字典里，
+			--才输出codes[Z]，也就是codes[i]
+			--就是说pre_str + z0 = z0 + z1 + ... + zn = Z，所以z0等于pre_str的第一个字符。所以codes[i] = pre_str + string.sub(pre_str,1,1);
+			--1找到codes[i]对应的字符串Z，2更新字典，
+			codes[codes_number] = pre_str .. string.sub(pre_str,1,1);
+			assert(i == codes_number);
 
+			--3输出
 			plain_text = plain_text .. codes[codes_number];
 			pre_str = codes[codes_number];
 			codes_number = codes_number + 1;
-		else
-			print('codes[i]',i,codes[i]);
+		else	--存在
 			if pre_str~='' then--前缀不为空，才能新加条目(因为前缀为空的时候是第一次进来,还没有值,需要特殊处理)
-				codes[codes_number] = pre_str .. string.sub(codes[i],1,1);--也要添加新条目
-				print('添加字典',codes_number,codes[codes_number]);
+				codes[codes_number] = pre_str .. string.sub(codes[i],1,1);--也要添加新条目(为什么code[i]存在，还要添加一个新条目到字典呢？由压缩过程可知:每次输出一个string编码的code时候，都是已经发现了一个不存在的新串new_string=string+x.这里添加到字典里的是上一次生成的新条目)
+				--print('添加字典',codes_number,codes[codes_number]);
 				codes_number = codes_number + 1;
 			end
 			plain_text = plain_text .. codes[i];
@@ -110,14 +113,11 @@ function decode(encoded_string)
 			break;
 		end
 	end
-	for k,v in pairs(codes) do
-		print(k,v)
-	end
 	return plain_text;
 end
 
 
-local data = "ABABABABAAAABABABAABAABABABBABABABABAABABABABABABABABABAAABBB";
+local data = "ABABABABAA";
 local encoded = encode(data)
 print(encoded);
 
